@@ -48,10 +48,36 @@
             padding: 30px;
             margin: 30px 0;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            position: relative;
         }
 
         #qrcode {
             margin: 0 auto;
+        }
+
+        .qr-status {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .qr-status.activo {
+            background: #4caf50;
+            color: white;
+        }
+
+        .qr-status.expirando {
+            background: #ff9800;
+            color: white;
+        }
+
+        .qr-status.expirado {
+            background: #f44336;
+            color: white;
         }
 
         .info-panel {
@@ -71,6 +97,31 @@
             font-weight: bold;
             color: #ffeb3b;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ffeb3b;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
         }
 
         .instructions {
@@ -123,6 +174,26 @@
             opacity: 0.7;
         }
 
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .connection-status.online {
+            background: #4caf50;
+            color: white;
+        }
+
+        .connection-status.offline {
+            background: #f44336;
+            color: white;
+        }
+
         @media (max-width: 600px) {
             .container {
                 margin: 10px;
@@ -136,16 +207,25 @@
             .countdown {
                 font-size: 1.5em;
             }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
+    <div class="connection-status" id="connection-status">
+        🟢 CONECTADO
+    </div>
+
     <div class="container">
         <h1>🏛️ UACE</h1>
         <p class="subtitle">Control de Acceso - Sala de Sistemas</p>
         
         <div id="main-content">
             <div class="qr-container">
+                <div class="qr-status" id="qr-status">ACTIVO</div>
                 <div id="qrcode"></div>
             </div>
             
@@ -161,6 +241,25 @@
                     Última actualización: <span id="ultima-actualizacion">--:--</span>
                 </div>
             </div>
+
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-number" id="entradas-hoy">-</div>
+                    <div class="stat-label">Entradas Hoy</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="salidas-hoy">-</div>
+                    <div class="stat-label">Salidas Hoy</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="usuarios-activos">-</div>
+                    <div class="stat-label">Usuarios Únicos</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="en-sala">-</div>
+                    <div class="stat-label">En Sala Ahora</div>
+                </div>
+            </div>
         </div>
 
         <div id="error-container" style="display: none;">
@@ -174,12 +273,13 @@
         <div class="instructions">
             <h3>📱 Instrucciones:</h3>
             <ol>
-                <li><strong>Escanea el QR</strong> con tu celular</li>
-                <li><strong>Se abrirá automáticamente</strong> el formulario</li>
-                <li><strong>Verifica tu email</strong> (debe ser @unal.edu.co)</li>
-                <li><strong>Selecciona</strong> ENTRADA o SALIDA</li>
-                <li><strong>Envía el formulario</strong></li>
+                <li><strong>Escanea el QR</strong> con la cámara de tu celular</li>
+                <li><strong>Se abrirá automáticamente</strong> el formulario de Google</li>
+                <li><strong>Verifica tu email</strong> (debe terminar en @unal.edu.co)</li>
+                <li><strong>Selecciona</strong> ENTRADA o SALIDA según corresponda</li>
+                <li><strong>Envía el formulario</strong> y verifica que aparezca "Respuesta registrada"</li>
             </ol>
+            <p><strong>💡 Tip:</strong> El código QR cambia cada 15 minutos automáticamente.</p>
         </div>
 
         <div class="footer">
@@ -189,32 +289,55 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN
+        // CONFIGURACIÓN - ¡IMPORTANTE: REEMPLAZAR CON TUS IDs REALES!
         const CONFIG = {
-            SHEET_ID: '1M2VdU2f3roJDVuhfYFUGRT7ltMn88npoD71H1k73fro', // Reemplazar con el ID real
+            SHEET_PRINCIPAL_ID: 'TU_SHEET_PRINCIPAL_ID_AQUI', // ID de tu Google Sheet principal
             INTERVALO_ACTUALIZACION: 30000, // 30 segundos
-            INTERVALO_QR: 15 * 60 * 1000    // 15 minutos en ms
+            INTERVALO_QR: 15 * 60 * 1000,   // 15 minutos en ms
+            INTERVALO_ESTADISTICAS: 60000    // 1 minuto para estadísticas
         };
 
+        // Variables globales
         let ultimoQR = null;
         let tiempoExpiracion = null;
         let intervaloCuentaRegresiva = null;
+        let intervaloEstadisticas = null;
+        let estadoConexion = true;
 
         // FUNCIÓN PRINCIPAL DE INICIALIZACIÓN
         function inicializar() {
-            console.log('Inicializando display QR...');
-            cargarNuevoQR();
+            console.log('🚀 Inicializando display QR versión 2.0...');
             
-            // Configurar actualización automática
+            // Verificar configuración
+            if (CONFIG.SHEET_PRINCIPAL_ID === 'TU_SHEET_PRINCIPAL_ID_AQUI') {
+                mostrarError('⚙️ CONFIGURACIÓN REQUERIDA: Debes reemplazar SHEET_PRINCIPAL_ID con tu ID real');
+                return;
+            }
+            
+            // Inicializar componentes
+            cargarNuevoQR();
+            cargarEstadisticas();
+            
+            // Configurar actualizaciones automáticas
             setInterval(cargarNuevoQR, CONFIG.INTERVALO_ACTUALIZACION);
+            intervaloEstadisticas = setInterval(cargarEstadisticas, CONFIG.INTERVALO_ESTADISTICAS);
+            
+            // Manejar estado de conexión
+            actualizarEstadoConexion(true);
         }
 
         // CARGAR NUEVO QR DESDE GOOGLE SHEETS
         async function cargarNuevoQR() {
             try {
-                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=Display_QR`;
+                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_PRINCIPAL_ID}/gviz/tq?tqx=out:json&sheet=Display_QR&headers=1&tq=SELECT%20*%20LIMIT%201`;
+                
+                console.log('📡 Cargando QR desde:', url);
                 
                 const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const text = await response.text();
                 
                 // Limpiar respuesta de Google Sheets (quitar callbacks de JSONP)
@@ -231,17 +354,77 @@
                     if (urlQR && codigo && expira) {
                         actualizarDisplay(urlQR, codigo, expira, actualizado);
                         ocultarError();
+                        actualizarEstadoConexion(true);
                     } else {
-                        mostrarError('Datos incompletos en la respuesta');
+                        throw new Error('Datos incompletos en la respuesta del servidor');
                     }
                 } else {
-                    mostrarError('No hay datos disponibles');
+                    throw new Error('No hay datos de QR disponibles - verifica que el sistema esté inicializado');
                 }
                 
             } catch (error) {
-                console.error('Error cargando QR:', error);
-                mostrarError('Error de conexión: ' + error.message);
+                console.error('❌ Error cargando QR:', error);
+                mostrarError(`Error de conexión: ${error.message}`);
+                actualizarEstadoConexion(false);
             }
+        }
+
+        // CARGAR ESTADÍSTICAS DEL SISTEMA
+        async function cargarEstadisticas() {
+            try {
+                // Cargar datos de registros de asistencia
+                const url = `https://docs.google.com/spreadsheets/d/${CONFIG.SHEET_PRINCIPAL_ID}/gviz/tq?tqx=out:json&sheet=Registros_Asistencia&headers=1`;
+                
+                const response = await fetch(url);
+                if (!response.ok) return; // Fallar silenciosamente para estadísticas
+                
+                const text = await response.text();
+                const jsonText = text.substring(47).slice(0, -2);
+                const data = JSON.parse(jsonText);
+                
+                if (data.table && data.table.rows) {
+                    calcularEstadisticas(data.table.rows);
+                }
+                
+            } catch (error) {
+                console.error('⚠️ Error cargando estadísticas:', error);
+                // No mostrar error para estadísticas, solo log
+            }
+        }
+
+        // CALCULAR ESTADÍSTICAS DEL DÍA
+        function calcularEstadisticas(rows) {
+            const hoy = new Date();
+            const inicioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+            
+            let entradas = 0;
+            let salidas = 0;
+            let usuariosUnicos = new Set();
+            
+            rows.forEach(row => {
+                try {
+                    if (row.c && row.c.length >= 6) {
+                        const fecha = row.c[0] ? new Date(row.c[0].v) : null;
+                        const email = row.c[1] ? row.c[1].v : null;
+                        const accion = row.c[2] ? row.c[2].v : null;
+                        const valido = row.c[5] ? row.c[5].v : false;
+                        
+                        if (fecha && fecha >= inicioDia && valido === true) {
+                            usuariosUnicos.add(email);
+                            if (accion === 'ENTRADA') entradas++;
+                            if (accion === 'SALIDA') salidas++;
+                        }
+                    }
+                } catch (error) {
+                    // Ignorar filas con errores
+                }
+            });
+            
+            // Actualizar UI
+            document.getElementById('entradas-hoy').textContent = entradas;
+            document.getElementById('salidas-hoy').textContent = salidas;
+            document.getElementById('usuarios-activos').textContent = usuariosUnicos.size;
+            document.getElementById('en-sala').textContent = Math.max(0, entradas - salidas);
         }
 
         // ACTUALIZAR DISPLAY CON NUEVO QR
@@ -250,6 +433,8 @@
             if (ultimoQR !== urlQR) {
                 ultimoQR = urlQR;
                 tiempoExpiracion = expira;
+                
+                console.log('🔄 Actualizando QR:', codigo);
                 
                 // Generar QR code
                 const qrContainer = document.getElementById('qrcode');
@@ -265,10 +450,10 @@
                     }
                 }, function (error) {
                     if (error) {
-                        console.error('Error generando QR:', error);
-                        mostrarError('Error generando código QR');
+                        console.error('❌ Error generando QR:', error);
+                        mostrarError('Error generando código QR visual');
                     } else {
-                        console.log('QR generado exitosamente');
+                        console.log('✅ QR visual generado exitosamente');
                     }
                 });
                 
@@ -301,16 +486,24 @@
                         document.getElementById('countdown').textContent = 
                             `${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
                         
-                        // Cambiar color cuando queden menos de 2 minutos
+                        // Actualizar estado visual del QR
+                        const qrStatus = document.getElementById('qr-status');
                         const countdownElement = document.getElementById('countdown');
+                        
                         if (minutos < 2) {
+                            qrStatus.textContent = 'EXPIRANDO';
+                            qrStatus.className = 'qr-status expirando';
                             countdownElement.style.color = '#ff5722';
                         } else {
+                            qrStatus.textContent = 'ACTIVO';
+                            qrStatus.className = 'qr-status activo';
                             countdownElement.style.color = '#ffeb3b';
                         }
                     } else {
                         document.getElementById('countdown').textContent = 'EXPIRADO';
                         document.getElementById('countdown').style.color = '#ff5722';
+                        document.getElementById('qr-status').textContent = 'EXPIRADO';
+                        document.getElementById('qr-status').className = 'qr-status expirado';
                     }
                 }
             }, 1000);
@@ -320,13 +513,29 @@
         function mostrarError(mensaje) {
             document.getElementById('main-content').style.display = 'none';
             document.getElementById('error-container').style.display = 'block';
-            console.error(mensaje);
+            document.querySelector('.error').innerHTML = `<strong>⚠️ Error de Sistema</strong><br>${mensaje}<div class="loading" style="margin-top: 10px;"></div>`;
+            console.error('🚨', mensaje);
         }
 
         // OCULTAR ERROR
         function ocultarError() {
             document.getElementById('main-content').style.display = 'block';
             document.getElementById('error-container').style.display = 'none';
+        }
+
+        // ACTUALIZAR ESTADO DE CONEXIÓN
+        function actualizarEstadoConexion(online) {
+            const statusElement = document.getElementById('connection-status');
+            if (online !== estadoConexion) {
+                estadoConexion = online;
+                if (online) {
+                    statusElement.textContent = '🟢 CONECTADO';
+                    statusElement.className = 'connection-status online';
+                } else {
+                    statusElement.textContent = '🔴 SIN CONEXIÓN';
+                    statusElement.className = 'connection-status offline';
+                }
+            }
         }
 
         // FORMATEAR HORA
@@ -341,15 +550,24 @@
         // INICIALIZAR CUANDO CARGUE LA PÁGINA
         document.addEventListener('DOMContentLoaded', inicializar);
 
-        // MANEJAR ERRORES DE RED
+        // MANEJAR EVENTOS DE RED
         window.addEventListener('online', () => {
-            console.log('Conexión restaurada');
+            console.log('🌐 Conexión restaurada');
+            actualizarEstadoConexion(true);
             cargarNuevoQR();
+            cargarEstadisticas();
         });
 
         window.addEventListener('offline', () => {
-            console.log('Conexión perdida');
-            mostrarError('Sin conexión a internet');
+            console.log('📡 Conexión perdida');
+            actualizarEstadoConexion(false);
+            mostrarError('Sin conexión a internet - esperando reconexión...');
+        });
+
+        // LIMPIEZA AL CERRAR PÁGINA
+        window.addEventListener('beforeunload', () => {
+            if (intervaloCuentaRegresiva) clearInterval(intervaloCuentaRegresiva);
+            if (intervaloEstadisticas) clearInterval(intervaloEstadisticas);
         });
     </script>
 </body>
